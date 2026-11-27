@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Diamond markup calculator | KREAN JEWELS</title><style>
+*{box-sizing:border-box}body{margin:0;background:#f4f1ea;color:#292c26;font:1rem system-ui,sans-serif}main{max-width:50rem;margin:auto;padding:clamp(1rem,5vw,3rem)}h1{font:clamp(2rem,6vw,3.8rem) Georgia,serif;margin:.5rem 0}form,section{padding:1.5rem;background:white;margin:1rem 0;border:1px solid #d3cdbf;border-radius:.5rem}label{display:block;margin:.7rem 0;font-weight:600}select,input,textarea{display:block;width:100%;padding:.65rem;margin:.3rem 0;font:inherit;border:1px solid #898577;border-radius:.3rem}output{white-space:pre-line;line-height:1.8}p{line-height:1.5}
+</style></head><body><main><header>KREAN JEWELS<h1>Diamond markup calculator</h1><p>Enter a vendor quote or your own Rapaport reference in USD. Starting values and tiers are examples.</p></header><form>
+<label>Price basis<select id="mode"><option value="vendor">Vendor · USD per carat</option><option value="total">Vendor · USD per stone</option><option value="rap">Rapaport reference · USD per carat</option></select></label>
+<label>Stone weight (ct)<input id="ct" type="number" value="2" step="any" required></label>
+<label><span id="unit">Vendor price (USD/ct)</span><input id="amount" type="number" value="1000" step="any" required></label>
+<label id="adjustLabel" hidden>Reference adjustment (%)<input id="adjust" type="number" value="-20" step="any">Use −20 for a 20% discount or 5 for a 5% premium.</label>
+<label>Markup rules<textarea id="rules" rows="3">0,40
+1,30
+2,20</textarea></label><p>One rule per line: minimum carats, markup %. The highest qualifying threshold applies. Markup is calculated on cost.</p></form>
+<section><h2>Estimated selling price</h2><output aria-live="polite"></output></section></main>
+<script>
+function quote(mode, weight, amount, adjustment, rules) {
+  function number(value) {
+    if (String(value).trim() === "" || !Number.isFinite(Number(value))) throw Error("Enter a number in every price and rule field.");
+    return Number(value);
+  }
+  const ct = number(weight), base = number(amount);
+  const pct = mode === "rap" ? number(adjustment) : 0;
+  if (ct <= 0 || base <= 0 || pct <= -100) throw Error("Enter a positive weight and price. The adjustment must exceed −100%.");
+  const tiers = rules.trim().split(/\r?\n/).map(line => {
+    const pair = line.split(",");
+    if (pair.length !== 2) throw Error("Each rule needs a minimum carat and a markup percentage.");
+    return pair.map(number);
+  }).sort((a,b) => a[0]-b[0]);
+  if(tiers[0][0] !== 0 || tiers.some(([min,rate],i) => min < 0 || rate < 0 || (i && min === tiers[i-1][0]))) throw Error("Start tiers at 0 ct and use unique thresholds and nonnegative markups.");
+  const [threshold, markup] = tiers.filter(([min]) => ct >= min).pop();
+  const cost = (mode === "total" ? base : base*ct) * (1+pct/100);
+  const retail = cost * (1+markup/100);
+  if(!Number.isFinite(retail)) throw Error("Price exceeds supported range.");
+  return {cost, retail, markup, threshold};
+}
+const get=id=>document.getElementById(id);
+const usd=new Intl.NumberFormat("en-US",{style:"currency",currency:"USD"});
+function refresh(){
+  const mode=get("mode").value;
+  get("adjustLabel").hidden=mode!=="rap";
+  get("unit").textContent={rap:"Reference price in full USD per carat",total:"Vendor price (USD per stone)",vendor:"Vendor price (USD/ct)"}[mode];
+  const result=document.querySelector("output");
+  try {
+    const q=quote(mode,get("ct").value,get("amount").value,get("adjust").value,get("rules").value);
+    result.textContent=["Stone cost: "+usd.format(q.cost),"Applied tier: "+q.threshold+" ct and up · "+q.markup+"% markup","Markup amount: "+usd.format(q.retail-q.cost),"Selling price: "+usd.format(q.retail)].join("\n");
+  } catch(error){result.textContent=error.message;}
+}
+document.querySelector("form").addEventListener("input",refresh);
+document.querySelector("form").addEventListener("submit",event=>event.preventDefault());
+refresh();
+</script></body></html>
